@@ -26,7 +26,7 @@ async def check_proxy(proxies):
         for attempts in range(3):
             try:
                 r = await session.get("http://pixelplanet.fun/api/me", impersonate="chrome110", proxies=proxies,
-                                      timeout=1)
+                                      timeout=2)
                 r.json()
                 if proxies not in final_list:
                     final_list.append(proxies)
