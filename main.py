@@ -1,13 +1,22 @@
 import asyncio
+import time
 from threading import Thread
 
+import schedule
 from Proxy_List_Scrapper import Scrapper
 from curl_cffi import requests
-from flask import Flask
+from flask import Flask, jsonify
 from fp.fp import FreeProxy
 from swiftshadow.classes import Proxy
 
-final_list = []
+final_list = [
+    {'http': 'http://136.144.52.41:443'},
+    {'http': 'http://72.10.164.178:19175'},
+    {'http': 'http://67.43.227.227:27921'},
+    {'http': 'http://160.86.242.23:8080'},
+    {'http': 'http://107.189.8.240:8080'},
+    {'http': 'http://141.145.197.152:8888'}
+]
 app = Flask(__name__)
 
 
@@ -21,28 +30,30 @@ async def gather_with_concurrency(n, *coros):
     return await asyncio.gather(*(sem_coro(c) for c in coros))
 
 
-async def check_proxy(proxies):
+async def check_proxy(proxies, new_list):
     async with requests.AsyncSession() as session:
         for attempts in range(3):
             try:
                 r = await session.get("http://pixelplanet.fun/api/me", impersonate="chrome110", proxies=proxies,
                                       timeout=3)
                 r.json()
-                if proxies not in final_list:
-                    final_list.append(proxies)
+                if proxies not in new_list:
+                    new_list.append(proxies)
                 break
             except:
                 pass
 
 
-async def main():
+async def update_proxy():
+    global final_list
     tasks = []
     data = Scrapper(category='ALL', print_err_trace=False).getProxies()
+    new_list = []
     for item in data.proxies:
         proxies = {
             "http": f"http://{item.ip}:{item.port}"
         }
-        tasks.append(check_proxy(proxies))
+        tasks.append(check_proxy(proxies, new_list))
     await gather_with_concurrency(60, *tasks)
 
     tasks = []
@@ -51,7 +62,7 @@ async def main():
         proxies = {
             "http": f"{item[1]}://{item[0]}",
         }
-        tasks.append(check_proxy(proxies))
+        tasks.append(check_proxy(proxies, new_list))
     await gather_with_concurrency(60, *tasks)
 
     tasks = []
@@ -60,9 +71,9 @@ async def main():
         proxies = {
             "http": f"http://{item}"
         }
-        tasks.append(check_proxy(proxies))
+        tasks.append(check_proxy(proxies, new_list))
     await gather_with_concurrency(60, *tasks)
-    final_list.append("end")
+    final_list = new_list
 
 
 @app.route('/')
@@ -72,15 +83,22 @@ def get_ok():
 
 @app.route('/list')
 def get_list():
-    return str(final_list), 200
+    return jsonify(final_list), 200
 
 
-def start():
-    asyncio.run(main())
+def job_update():
+    asyncio.run(update_proxy())
+
+
+def updater():
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
 
 
 if __name__ == "__main__":
-    Thread(target=start).start()
+    schedule.every(3).hours.do(job_update)
+    Thread(target=updater).start()
     app.run(host='0.0.0.0', port=80, threaded=True)
 
 """
